@@ -8,6 +8,7 @@ from direct.task.Task import TaskManager
 from panda3d.core import Camera, ClockObject, NodePath
 
 import engine.scene as scene_module
+from engine.events import Events
 from engine.input import Input
 
 
@@ -35,6 +36,13 @@ class Game:
     Get the keyboard and mouse state of the current frame.
     """
     return self._input
+
+  @property
+  def events(self) -> Events:
+    """
+    Get the event bus shared by every node of every scene.
+    """
+    return self._events
 
   @property
   def scenes(self) -> dict[tuple[str, str], scene_module.Scene]:
@@ -85,6 +93,9 @@ class Game:
 
     # Answer button queries without exposing the runtime's mouse watcher.
     self._input = Input(context)
+
+    # Let nodes publish and react to events without knowing each other.
+    self._events = Events()
 
     # Keep scene instances available independently of their update tasks.
     self._scenes: dict[tuple[str, str], scene_module.Scene] = {}

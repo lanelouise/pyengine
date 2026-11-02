@@ -6,25 +6,21 @@ from direct.task.Task import Task
 from panda3d.core import NodePath, PythonTask
 
 import engine.game as game_module
+from engine.node3d import Node3D
 
 
-class Scene(ABC):
+class Scene(Node3D, ABC):
   """
-  Own scene content and manage its activation and frame update task.
-  """
-  @property
-  def game(self) -> game_module.Game:
-    """
-    Get the game that owns this scene and provides shared runtime services.
-    """
-    return self._game
+  Root the scene hierarchy and manage its activation and frame update task.
 
+  Subclasses build their tree in on_ready(), which runs when the game registers the scene.
+  """
   @property
   def dt(self) -> float:
     """
     Get the elapsed time since the previous frame, in seconds.
     """
-    return self._game.clock.getDt()
+    return self.game.clock.getDt()
 
   @property
   def is_active(self) -> bool:
@@ -35,18 +31,19 @@ class Scene(ABC):
 
   def __init__(self, game: game_module.Game) -> None:
     """
-    Store the owning game and prepare a detached scene root.
+    Store the owning game and build the scene tree under a detached root.
 
     Args:
       game (game_module.Game): Game that creates and owns this scene instance.
     """
-    self._game = game
+    super().__init__()
 
     # Retain the task handle so destruction removes only this scene's update.
     self._task: PythonTask | None = None
 
-    # Keep constructed content detached until the scene is loaded.
-    self._root = NodePath(type(self).__name__)
+    # The scene is the root of its tree, so it is inside the tree from the start; content stays detached until loaded.
+    self._game = game
+    self.on_ready()
 
   def load(self) -> None:
     """
@@ -56,11 +53,11 @@ class Scene(ABC):
     if self._task is not None:
       return
 
-    # Make constructed content visible and apply scene-specific camera settings.
+    # Make constructed content visible.
     self.activate(self.game.render)
 
     # Retain the update task handle for activation checks and cleanup.
-    self._task = self._game.tasks.add(self.update, f'{type(self).__name__}-update')
+    self._task = self.game.tasks.add(self._tick, f'{type(self).__name__}-update')
 
   def activate(self, parent: NodePath) -> None:
     """
@@ -71,9 +68,20 @@ class Scene(ABC):
     """
     self._root.reparentTo(parent)
 
-  def update(self, task: Task) -> int:
+  def destroy(self) -> None:
     """
-    Keep the scene scheduled for the next frame.
+    Stop scene updates, then destroy the tree and remove the scene root.
+    """
+    # Stop frame callbacks before removing the objects they may access.
+    if self._task is not None:
+      self.game.tasks.remove(self._task)
+      self._task = None
+
+    super().destroy()
+
+  def _tick(self, task: Task) -> int:
+    """
+    Update the whole tree once per frame.
 
     Args:
       task (Task): Panda3D task executing this frame.
@@ -81,16 +89,6 @@ class Scene(ABC):
     Returns:
       int: Status requesting execution on the next frame.
     """
+    self.update(self.dt)
+
     return task.cont
-
-  def destroy(self) -> None:
-    """
-    Stop scene updates and remove scene-owned visual objects.
-    """
-    # Stop frame callbacks before removing the visual objects they may access.
-    if self._task is not None:
-      self.game.tasks.remove(self._task)
-      self._task = None
-
-    # Remove all scene-owned nodes through their common root.
-    self._root.removeNode()
