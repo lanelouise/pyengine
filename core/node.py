@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TypeVar
 
-from direct.showbase.DirectObject import DirectObject
+from panda3d.core import NodePath
 
-if TYPE_CHECKING:
-  from engine.game import Game
-  from engine.scene import Scene
+from engine.core.game import Game
+from engine.core.transform import Transform
 
 N = TypeVar('N', bound='Node')
 
@@ -17,12 +15,12 @@ class Node:
   Form the scene hierarchy: a node owns its children, which are updated and destroyed along with it.
 
   Subclasses react to the lifecycle through on_ready(), on_update(dt), and on_destroy() instead of overriding
-  update() and destroy(), which the engine calls on the scene root and propagates down the tree.
+  update() and destroy(), which the app calls on the scene and which propagate down the tree.
   """
   @property
   def game(self) -> Game:
     """
-    Get the game providing shared runtime services.
+    Get the services shared by the game's nodes.
 
     Raises:
       RuntimeError: If the node has not entered a scene yet.
@@ -35,7 +33,7 @@ class Node:
   @property
   def parent(self) -> Node | None:
     """
-    Get the node this one was added to, or None for a scene root.
+    Get the node this one was added to, or None for a scene.
     """
     return self._parent
 
@@ -73,9 +71,6 @@ class Node:
     self._children: list[Node] = []
     self._destroyed = False
 
-    # Bind runtime events, such as the mouse wheel, so destruction removes only this node's bindings.
-    self._listener = DirectObject()
-
   def add(self, node: N) -> N:
     """
     Attach a child node, which enters the tree right away when this node is already inside one.
@@ -100,17 +95,6 @@ class Node:
       node._enter(self._game)
 
     return node
-
-  def accept(self, event: str, callback: Callable[..., Any], *args: Any) -> None:
-    """
-    Listen for a runtime event, such as 'wheel_up', until the node is destroyed.
-
-    Args:
-      event (str): Panda3D event name.
-      callback (Callable[..., Any]): Function called when the event fires.
-      args (Any): Extra arguments passed to the callback.
-    """
-    self._listener.accept(event, callback, list(args))
 
   def update(self, dt: float) -> None:
     """
@@ -143,11 +127,11 @@ class Node:
 
     self.on_destroy()
 
-    # Release event subscriptions and runtime bindings so nothing calls into a destroyed node.
+    # Release event subscriptions and device bindings so nothing calls into a destroyed node.
     if self._game is not None:
       self._game.events.release(self)
+      self._game.input.release(self)
 
-    self._listener.ignoreAll()
     self._unmount()
 
     if self._parent is not None:
@@ -176,7 +160,7 @@ class Node:
     Bind the node to the game, signal it is ready, and bring its pending children into the tree.
 
     Args:
-      game (Game): Game owning the tree the node is entering.
+      game (Game): Services of the tree the node is entering.
     """
     # Children added during on_ready() enter immediately, so only the earlier ones are pending.
     pending = tuple(self._children)
@@ -191,10 +175,99 @@ class Node:
 
   def _mount(self) -> None:
     """
-    Attach engine resources once the node enters the tree; nodes without resources do nothing.
+    Attach scene graph resources once the node enters the tree; plain nodes have none.
     """
 
   def _unmount(self) -> None:
     """
-    Release engine resources when the node is destroyed; nodes without resources do nothing.
+    Release scene graph resources when the node is destroyed; plain nodes have none.
     """
+
+
+class Node3D(Node):
+  """
+  Give a node a place in the 3D scene graph, with a root that holds its models and moves with its transform.
+  """
+  @property
+  def root(self) -> NodePath:
+    """
+    Get the scene graph node that holds this node's models and its 3D descendants.
+    """
+    return self._root
+
+  @property
+  def transform(self) -> Transform:
+    """
+    Get the position and rotation of this node's root in its anchor's coordinates.
+    """
+    return self._transform
+
+  def __init__(self) -> None:
+    """
+    Create a detached root, which joins the scene graph when the node enters the tree.
+    """
+    super().__init__()
+
+    # The root exists before entering the tree, so the transform can be set right after construction.
+    self._root = NodePath(type(self).__name__)
+    self._transform = Transform(self._root)
+
+  def anchor(self) -> NodePath:
+    """
+    Choose the scene graph node the root hangs from; by default, the root of the nearest 3D ancestor.
+
+    Override it to hang the node elsewhere, such as a window corner or the scene root.
+
+    Returns:
+      NodePath: Node whose coordinates the transform is expressed in.
+
+    Raises:
+      RuntimeError: If no ancestor has a place in the scene graph.
+    """
+    node = self.parent
+    while node is not None:
+      if isinstance(node, Node3D):
+        return node.root
+      node = node.parent
+
+    raise RuntimeError(f'{type(self).__name__} needs a 3D ancestor to hang from.')
+
+  def _mount(self) -> None:
+    """
+    Attach the root under its anchor.
+    """
+    self._root.reparentTo(self.anchor())
+
+  def _unmount(self) -> None:
+    """
+    Remove the root and its models from the scene graph.
+    """
+    self._root.removeNode()
+
+
+class Scene(Node3D):
+  """
+  Root a tree of nodes; the app shows it, updates it every frame, and destroys it when switching scenes.
+
+  Subclasses build their tree in on_ready(), which runs as soon as the scene is created.
+  """
+  def __init__(self, game: Game) -> None:
+    """
+    Enter the tree as its root and build the scene's content.
+
+    Args:
+      game (Game): Services shared by the scene's nodes.
+    """
+    super().__init__()
+    self._game = game
+    self.on_ready()
+
+  def update(self, dt: float) -> None:
+    """
+    Advance the physics, then update the whole tree, so nodes see where their bodies ended up this frame.
+
+    Args:
+      dt (float): Elapsed time since the previous frame, in seconds.
+    """
+    self.game.physics.step(dt)
+    super().update(dt)

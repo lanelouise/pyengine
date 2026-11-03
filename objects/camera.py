@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from panda3d.core import Point3, Quat, Vec3
 
-from engine.node import Node
+from engine.core.node import Node
 
 
 class Camera(Node):
@@ -105,7 +105,7 @@ class Camera(Node):
     """
     Get the horizontal field of view, in degrees.
     """
-    return self.game.camera.node().getLens().getFov().x
+    return self.game.renderer.lens.getFov().x
 
   @fov.setter
   def fov(self, value: float) -> None:
@@ -115,23 +115,23 @@ class Camera(Node):
     Args:
       value (float): New horizontal field of view, in degrees.
     """
-    lens = self.game.camera.node().getLens()
+    lens = self.game.renderer.lens
     lens.setFov(value, value / lens.getAspectRatio())
 
-  def __init__(self, target: Point3 = Point3(0, 0, 0), distance: float = 10.0, rotation: Vec3 = Vec3(0, -45, 0)) -> None:
+  def __init__(self, target: Point3 | None = None, distance: float = 10.0, rotation: Vec3 | None = None) -> None:
     """
     Configure the framing, applied once the camera enters the tree.
 
     Args:
-      target (Point3): Point to keep at the center of the view, in the scene's coordinates.
+      target (Point3 | None): Point to keep at the center of the view, in the scene's coordinates; the origin when omitted.
       distance (float): Distance from the target to the camera, in units.
-      rotation (Vec3): View angle as heading, pitch, and roll, in degrees.
+      rotation (Vec3 | None): View angle as heading, pitch, and roll, in degrees; looking 45 degrees down when omitted.
     """
     super().__init__()
 
-    self._target = Point3(target)
+    self._target = Point3(target) if target is not None else Point3(0, 0, 0)
     self._distance = distance
-    self._rotation = Vec3(rotation)
+    self._rotation = Vec3(rotation) if rotation is not None else Vec3(0, -45, 0)
     self._offset = Vec3(0, 0, 0)
 
   def on_ready(self) -> None:
@@ -147,7 +147,7 @@ class Camera(Node):
     if not self.is_inside_tree:
       return
 
-    # The scene root sits at the origin of the render tree, so scene coordinates are render coordinates.
-    camera = self.game.camera
-    camera.setPos(self.game.render, self.position)
-    camera.setHpr(self.game.render, self._rotation)
+    # The scene root sits at the origin of the rendered graph, so scene coordinates are rendered coordinates.
+    renderer = self.game.renderer
+    renderer.camera.setPos(renderer.root, self.position)
+    renderer.camera.setHpr(renderer.root, self._rotation)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from engine.node3d import Node3D
+from engine.core.node import Node3D
 
 
 class Terrain(Node3D):
