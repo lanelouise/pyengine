@@ -11,15 +11,17 @@ from watchfiles import PythonFilter, watch
 
 from engine.runtime.app import App
 
+# Methods that run every frame on live objects, so editing them shows without rebuilding the scene.
+LIVE = frozenset({'on_update'})
+
 
 class Reloader:
   """
   Apply edits to the game's Python sources while it runs, keeping the current game state.
 
   Each edited module is executed again and its classes and functions are updated in place, so live objects keep their
-  data and run the new code. Objects that already exist keep the attributes they had: fields added to __init__ or work
-  added to on_ready only reach objects created afterwards. When a class changes its base classes, the running scene is
-  rebuilt instead.
+  data and run the new code. Only per-frame code can show this way, so the running scene is rebuilt from the new code
+  whenever an edit changes anything else, such as __init__, on_ready, a helper they call, or a constant.
   """
   def __init__(self, app: App, source: str) -> None:
     """
@@ -88,13 +90,14 @@ class Reloader:
       module (ModuleType): Module backed by an edited file.
 
     Returns:
-      bool: Whether every definition could be updated in place.
+      bool: Whether every definition could be updated in place, without rebuilding the scene to show the edit.
     """
     # Keep the old definitions, which live objects and other modules still reference.
     previous = dict(module.__dict__)
     reload(module)
 
-    patched = True
+    # Constants and functions may be used while objects are built, so a change to them only shows on a rebuilt scene.
+    patched = all(self._unchanged(old, module.__dict__.get(name)) for name, old in previous.items() if not name.startswith('__') and not isinstance(old, type))
 
     for name, old in previous.items():
       new = module.__dict__.get(name)
@@ -124,10 +127,13 @@ class Reloader:
       new (type): Class created by the new execution of its module.
 
     Returns:
-      bool: Whether the class could be updated; a change of base classes cannot.
+      bool: Whether the edit shows on live objects; a change of base classes or of build-time code needs a rebuilt scene.
     """
     if [base.__qualname__ for base in old.__bases__] != [base.__qualname__ for base in new.__bases__]:
       return False
+
+    # Only per-frame code shows on live objects; any other change may run while objects are built, so it needs a rebuilt scene.
+    rebuild = any(not self._unchanged(old.__dict__.get(name), value) for name, value in new.__dict__.items() if name not in LIVE and (name == '__init__' or not name.startswith('__')))
 
     # Remove what the new definition dropped, then bring in what it defines.
     for name in set(old.__dict__) - set(new.__dict__) - {'__dict__', '__weakref__'}:
@@ -144,7 +150,38 @@ class Reloader:
         self._retarget(value, old)
         setattr(old, name, value)
 
-    return True
+    return not rebuild
+
+  @staticmethod
+  def _unchanged(old: object, new: object) -> bool:
+    """
+    Tell whether a module or class value is the same in the new definition, comparing functions by their code.
+
+    Args:
+      old (object): Value before the edit.
+      new (object): Value after the edit.
+
+    Returns:
+      bool: Whether the edit left the value as it was; values that cannot be compared count as unchanged.
+    """
+    if old is new or isinstance(old, (type, ModuleType)) or isinstance(new, (type, ModuleType)):
+      return True
+
+    if isinstance(old, FunctionType) and isinstance(new, FunctionType):
+      return old.__code__.co_code == new.__code__.co_code and old.__code__.co_consts == new.__code__.co_consts and old.__code__.co_names == new.__code__.co_names
+
+    # Properties, static methods, and other wrappers hold functions that run when called, not when objects are built.
+    if isinstance(old, (property, staticmethod, classmethod)) or isinstance(new, (property, staticmethod, classmethod)):
+      return True
+
+    # Values compared only by identity, such as type variables, are created anew by every execution of the module.
+    if type(old).__eq__ is object.__eq__:
+      return True
+
+    try:
+      return bool(old == new)
+    except Exception:
+      return True
 
   def _patch_function(self, old: FunctionType, new: FunctionType, owner: type | None) -> None:
     """

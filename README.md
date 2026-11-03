@@ -121,10 +121,10 @@ class Level(Scene):
 ## Services: `self.game`
 
 - `events`: `on(name, callback)`, `off(name, callback)`, `emit(name, **data)`. Event names are plain strings such as `'player.dashed'`. Subscriptions made by a node's bound methods are removed when the node is destroyed, and emitting an event nobody listens to warns while debugging.
-- `input`: `is_down(key)`, `axis(negative, positive)`, and `on(event, callback)` for device events such as `'wheel_up'`.
+- `input`: `is_down(key)`, `axis(negative, positive)`, `mouse` (the pointer's position in the window, from -1 to 1 on each axis, or `None` outside it), and `on(event, callback)` for device events such as `'wheel_up'`.
 - `physics`: steps the rigidbodies and colliders (see below); `touching(collider)` lists what a collider overlaps.
 - `loader`: `model(path)` loads a model, relative to the project root.
-- `renderer`: the 3D root, the camera, its lens, and the 2D overlay.
+- `renderer`: the 3D root, the camera, its lens, and the 2D overlay anchors (`top_left` and `top_right`).
 
 Use a direct call when one node controls another (a player moving the camera), and an event when a node only reacts to something (a camera shake when the player dashes).
 
@@ -140,10 +140,10 @@ Every frame, before the tree updates, the physics moves each body by its velocit
 
 ## Hot reload
 
-While the game runs, saving a file of the scene's package re-executes that module and updates its classes and functions in place: live objects keep their state and run the new code. Limits:
+While the game runs, saving a file of the scene's package re-executes that module and updates its classes and functions in place.
 
-- Fields added to `__init__` or work added to `on_ready()` only reach objects created afterwards.
-- Changing a class's base classes rebuilds the scene, losing its state.
+- An edit that only touches `on_update()` keeps the scene running: live objects keep their state and run the new code.
+- Any other edit, such as to `__init__`, `on_ready()`, a helper they call, a module constant, or a class's base classes, rebuilds the scene from the new code, losing its state.
 - Changes to the engine itself need a restart.
 
 ## Default scene

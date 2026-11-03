@@ -42,6 +42,20 @@ class Device:
     button = ButtonRegistry.ptr().findButton(key)
     return button != ButtonHandle.none() and watcher.isButtonDown(button)
 
+  def mouse(self) -> tuple[float, float] | None:
+    """
+    Get the pointer's position in the window.
+
+    Returns:
+      tuple[float, float] | None: Horizontal and vertical position, from -1 at the left and bottom edges to 1 at the
+        right and top edges; None while there is no window or the pointer is outside it.
+    """
+    watcher = self._base.mouseWatcherNode
+    if watcher is None or not watcher.hasMouse():
+      return None
+
+    return watcher.getMouseX(), watcher.getMouseY()
+
   def bind(self, owner: object, event: str, callback: Callable[..., Any], *args: Any) -> None:
     """
     Call a function whenever a device event fires, until the owner is released.

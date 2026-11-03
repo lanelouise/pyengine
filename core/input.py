@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from panda3d.core import Point2
+
 from engine.runtime.device import Device
 
 
@@ -10,6 +12,16 @@ class Input:
   """
   Answer which buttons are held this frame and deliver device events to nodes.
   """
+  @property
+  def mouse(self) -> Point2 | None:
+    """
+    Get the pointer's position in the window, from -1 at the left and bottom edges to 1 at the right and top edges.
+
+    It is None while the pointer is outside the window.
+    """
+    position = self._device.mouse()
+    return Point2(*position) if position is not None else None
+
   def __init__(self, device: Device) -> None:
     """
     Read the raw keyboard and mouse through the runtime device.

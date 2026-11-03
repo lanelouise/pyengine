@@ -30,6 +30,13 @@ class Renderer:
     return self._base.cam.node().getLens()
 
   @property
+  def top_left(self) -> NodePath:
+    """
+    Get the 2D overlay node pinned to the window's top-left corner.
+    """
+    return self._base.a2dTopLeft
+
+  @property
   def top_right(self) -> NodePath:
     """
     Get the 2D overlay node pinned to the window's top-right corner.
