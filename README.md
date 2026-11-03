@@ -128,6 +128,20 @@ class Level(Scene):
 
 Use a direct call when one node controls another (a player moving the camera), and an event when a node only reacts to something (a camera shake when the player dashes).
 
+## Rendering primitives and instancing
+
+`engine.core.geometry.ellipsoid(game.loader, radii)` returns a detached ellipsoid using Panda3D's bundled unit sphere, with smooth outward normals and normalized normals after nonuniform scaling. Use `Vec3(1, 1, 1)` for a unit sphere. Radii must be positive and finite. Position, color, and parent the returned node as needed. The original cached asset is not modified; this does not regenerate normals on arbitrary imported meshes.
+
+`engine.core.geometry.instance(source, parent, name='instance')` returns a unique placement node with the source model instanced beneath it. Apply position, rotation, scale, and visibility to this returned node. Geometry and source render state remain shared; editing the source itself still affects every instance.
+
+## Lights and shadows
+
+`engine.objects.light.AmbientLight(color, enabled=True)` and `DirectionalLight(color, enabled=True, shadows=False, resolution=2048)` are scene nodes. They expose writable `color` and `enabled`, plus the usual `root` and `transform`. Disabling a directional light removes it from scene lighting and disables its shadow camera; enabling it restores the original shadow settings. Destroying a light unregisters it and releases its scene graph node.
+
+For shadow rendering, enable scene shaders explicitly with `scene.root.setShaderAuto()`. Lights do not change or clear the scene's shader policy. `directional.fit_shadows(points, margin=0.1)` fits a square orthographic shadow volume to finite points in scene coordinates, including receiver and caster bounds. Its center snaps to texels with padding to retain coverage. The caller chooses which bounds matter; there is no terrain, camera control, day/night cycle, or horizon policy in this API.
+
+Engine rendering checks use only bundled Panda3D assets: run `python -m unittest discover -s engine/tests -v` from the parent project directory.
+
 ## Physics
 
 Physics is 2D on the ground plane, which suits top-down games.

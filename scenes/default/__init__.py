@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from panda3d.core import AmbientLight, CardMaker, DirectionalLight, Vec3, Vec4
+from panda3d.core import CardMaker, Vec3, Vec4
 
 from engine.core.node import Node3D, Scene
 from engine.objects.camera import Camera
+from engine.objects.light import AmbientLight, DirectionalLight
 from engine.objects.terrain import Terrain
 
 
@@ -61,11 +62,6 @@ class Default(Scene):
     self.add(Spinner())
 
     # Light the scene so the box's faces can be told apart.
-    ambient = AmbientLight('ambient')
-    ambient.setColor(Vec4(0.4, 0.4, 0.4, 1))
-    sun = DirectionalLight('sun')
-    sun.setColor(Vec4(0.8, 0.8, 0.8, 1))
-    sun_path = self.root.attachNewNode(sun)
-    sun_path.setHpr(30, -60, 0)
-    self.root.setLight(self.root.attachNewNode(ambient))
-    self.root.setLight(sun_path)
+    self.add(AmbientLight(color=Vec4(0.4, 0.4, 0.4, 1)))
+    light = self.add(DirectionalLight(color=Vec4(0.8, 0.8, 0.8, 1)))
+    light.transform.rotation = Vec3(30, -60, 0)
